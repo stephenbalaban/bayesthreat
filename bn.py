@@ -1,4 +1,6 @@
-from itertools import combinations_with_replacement
+from itertools import product
+from math import log
+
 """
 Example BN with CPTs:
                  +-------+                      +-------+
@@ -49,40 +51,52 @@ class Dag(object):
 
 
 class RV(object):
-    def __init__(self, name, cpt, abbr):
+    def __init__(self, name,abbr):
         self.name = name
         self.abbr = abbr
 
 class BayesNode(object):
     def __init__(self, rv, cpt, parents=[]):
-        self.name = name
+        self.name = rv.name
+        self.abbr = rv.abbr
+        self.rv = rv
         self.parents = parents
-        self.cpt = make_cpt(pdist)
+        self.cpt = self.make_cpt(cpt)
+    def __repr__(self):
+        result = "( %s )" % self.name
+        for row in self.cpt:
+            result += str(row)
+        return result
     def make_cpt(self, cpt):
         cpt_type = type(cpt)
-        if cpt_type not in ['list', 'dict']:
+        if cpt_type not in [list, dict]:
             raise Exception("Invalid CPT given, type(cpt): %s" % cpt_type)
-        f = make_dict_cpt if cpt_type == 'dict' else make_list_cpt
+        f = self.make_dict_cpt if cpt_type == dict else self.make_list_cpt
         return f(cpt)
     def make_dict_cpt(self, cpt):
         result = {}
         for k in cpt:
-            result[k] = cpt[k]
+            result[bool(k)] = cpt[k]
         if len(cpt) == 1: # binary RV
-            result[not cpt[0]] = 1 - cpt[0]
+            key = cpt.keys()[0]
+            value = cpt.values()[0]
+            result[bool(key)] = value
+            result[not key] = 1 - value
         return result
     def make_list_cpt(self, cpt_list):
         """ maps cpt_list [ pr, pr, pr ] -> dictionary  """
-        n = len(cpt_list)
-        keys = combinations_with_replacement([1,0], n) if n > 2 else [1, 0]
+        n = int(log(len(cpt_list), 2)) # the number of varsz
+        keys = product([True,False], repeat=n) if n > 2 else [1, 0]
         if len(cpt_list) == 1:
             cpt_list.append(1 - cpt_list[0])
         return dict(zip(keys, cpt_list))
 
 class BayesNet(object):
     def __init__(self, *nodes):
-        self.nodes = dict(map(lambda n: (n, n.name), nodes))
-        self.abbrs = dict(map(lambda n: (n, n.abbr), nodes))
+        self.nodes = dict(map(lambda n: (n.name, n), nodes))
+        self.abbrs = dict(map(lambda n: (n.abbr, n), nodes))
+    def __repr__(self):
+        return '\n'.join(str(self.nodes))
     def pr(*rvs):
         """
         Calculates the probability of the given RVs, e.g.
@@ -94,14 +108,17 @@ class BayesNet(object):
         return self.abbrs[abbr]
     def name(self, name):
         return self.nodes[name]
-    def query(rv=[], given=[]):
+    def query(self, string):
         """
            returns  Pr( rv | given )
         """
+        rvs, given = self.parse_query(string)
         return 
 
     def parse_query(self, query):
-        return tuple(map(lambda x: x.split(','), query.split('|')))
+        """ maps string query -> rv, given list"""
+        rvs, given = tuple(map(lambda x: x.split(','), query.split('|')))
+        return (rvs, given)
 
 def make_earthquake_model():
     erv = RV(name="Earthquake", abbr='e')
@@ -110,11 +127,14 @@ def make_earthquake_model():
     mrv = RV("MaryCalls", 'm')
     jrv = RV("JohnCalls", 'j')
     e = BayesNode(rv=erv, cpt=[0.002], parents=[]) # [0.002] expands to { 1: 0.002, 0: 1 - 0.002 }
-    b = BayesNode(brv, cpt={ 1: 0.001 }) # no parentsj
+    b = BayesNode(brv, cpt={ True: 0.001 }) # no parentsj
     a = BayesNode(arv, cpt=[0.95, 0.94, 0.29, 0.001], parents=[b, e])
-    m = BayesNode(mrv, cpt=[0.70, 0.01], [a]) # [0.70, 0.01] expands to { 1: 0.70, 0: 0.01 }
-    j = BayesNode(jrv, cpt=[0.90, 0.05], [a])
+    m = BayesNode(mrv, cpt=[0.70, 0.01], parents=[a]) # [0.70, 0.01] expands to { 1: 0.70, 0: 0.01 }
+    j = BayesNode(jrv, cpt=[0.90, 0.05], parents=[a])
     bn = BayesNet(e,b,a,j,m)
-    bn.query_raw(rv=[b], given=[j, m]) #probability of a burglary given both john and mary call
-    bn.Pr('B | j, m')
+    print("Made BayesNet:\n")
+#    print(bn)
+    print(bn.nodes)
+#    bn.query_raw(rv=[b], given=[j, m]) #probability of a burglary given both john and mary call
+#    bn.Pr('B | j, m')
 
