@@ -1,3 +1,4 @@
+from itertools import combinations_with_replacement
 """
 Example BN with CPTs:
                  +-------+                      +-------+
@@ -21,12 +22,12 @@ Example BN with CPTs:
     +---+------+               +---+------+
     | 1 | 0.90 |               | 1 | 0.70 |
     +---+------+               +---+------+
-    | 0 | 0.05 |               | 1 | 0.00 |
+    | 0 | 0.05 |               | 1 | 0.01 |
     +---+------+               +---+------+
 
-    P(x_1, ..., x_n) = \pi_{i=1]^n P(x_i | x_{i-1}, ..., x_n)
+    P(x_1, ..., x_n) = \Pi_{i=1]^n P(x_i | x_{i-1}, ..., x_n)
     Chain rule:
-                     = \pi_{i=1]^n P(x_i | Parents(X_i))
+                     = \Pi_{i=1]^n P(x_i | Parents(X_i))
 
 BN with continuous variables:
 
@@ -37,41 +38,83 @@ BN with continuous variables:
 
 """
 
-class RV(object):
-    def __init__(self, name, pdist):
-        self.name = name
-        self.pdist = make_pdist(pdist)
-    def make_pdist(self, pdist):
-        result = {}
-        for k in pdist:
-            result[k] = pdist[k]
-        if len(pdist) == 1: # binary RV
-            result[not pdist[0]] = 1 - pdist[0]
-        return result
-
-class BayesCPT(object):
-    def __init__(self):
+class Dag(object):
+    """
+    A Bayes Net is a Directed Acyclic Graph (DAG), represented as an adjacency
+    matrix
+    """
+    def __init__(self, *nodes):
+        self.matrix = make_matrix(nodes)
         pass
 
-class BayesNode(object):
-    def __init__(self, name, cpt, parent_list=[]):
+
+class RV(object):
+    def __init__(self, name, cpt, abbr):
         self.name = name
-        self.cpt = cpt
-        self.parents = parent_list
+        self.abbr = abbr
+
+class BayesNode(object):
+    def __init__(self, rv, cpt, parents=[]):
+        self.name = name
+        self.parents = parents
+        self.cpt = make_cpt(pdist)
+    def make_cpt(self, cpt):
+        cpt_type = type(cpt)
+        if cpt_type not in ['list', 'dict']:
+            raise Exception("Invalid CPT given, type(cpt): %s" % cpt_type)
+        f = make_dict_cpt if cpt_type == 'dict' else make_list_cpt
+        return f(cpt)
+    def make_dict_cpt(self, cpt):
+        result = {}
+        for k in cpt:
+            result[k] = cpt[k]
+        if len(cpt) == 1: # binary RV
+            result[not cpt[0]] = 1 - cpt[0]
+        return result
+    def make_list_cpt(self, cpt_list):
+        """ maps cpt_list [ pr, pr, pr ] -> dictionary  """
+        n = len(cpt_list)
+        keys = combinations_with_replacement([1,0], n) if n > 2 else [1, 0]
+        if len(cpt_list) == 1:
+            cpt_list.append(1 - cpt_list[0])
+        return dict(zip(keys, cpt_list))
 
 class BayesNet(object):
-    def __init__(self, nodes):
-        self.nodes = nodes
+    def __init__(self, *nodes):
+        self.nodes = dict(map(lambda n: (n, n.name), nodes))
+        self.abbrs = dict(map(lambda n: (n, n.abbr), nodes))
+    def pr(*rvs):
+        """
+        Calculates the probability of the given RVs, e.g.
+            P(x_1, ..., x_n) = \pi_{i=1]^n P(x_i | x_{i-1}, ..., x_n)
+        """
+        backprobs = map(lambda rv: prob(rv, given=rv.parents()), rvs)
+        product(backprobs)
+    def get(self, abbr):
+        return self.abbrs[abbr]
+    def name(self, name):
+        return self.nodes[name]
+    def query(rv=[], given=[]):
+        """
+           returns  Pr( rv | given )
+        """
+        return 
+
+    def parse_query(self, query):
+        return tuple(map(lambda x: x.split(','), query.split('|')))
 
 def make_earthquake_model():
-    erv = RV("Earthquake", {True: 0.002})
-    brv = RV("Burgler", {True: 0.001})
-    arv = RV("Alarm", {True: 0.002})
-    erv = RV("MaryCalls", {True: 0.002})
-    erv = RV("JohnCalls", {True: 0.002})
-    e = BayesNode(erv, e_cpt)
-    b = BayesNode(brv, b_cpt)
-    a = BayesNode(arv, a_cpt, [e, b])
-    j = BayesNode(jrv, j_cpt, [a])
-    m = BayesNode(mrv, m_cpt, [a])
+    erv = RV(name="Earthquake", abbr='e')
+    brv = RV("Burgler", 'b')
+    arv = RV("Alarm", 'a')
+    mrv = RV("MaryCalls", 'm')
+    jrv = RV("JohnCalls", 'j')
+    e = BayesNode(rv=erv, cpt=[0.002], parents=[]) # [0.002] expands to { 1: 0.002, 0: 1 - 0.002 }
+    b = BayesNode(brv, cpt={ 1: 0.001 }) # no parentsj
+    a = BayesNode(arv, cpt=[0.95, 0.94, 0.29, 0.001], parents=[b, e])
+    m = BayesNode(mrv, cpt=[0.70, 0.01], [a]) # [0.70, 0.01] expands to { 1: 0.70, 0: 0.01 }
+    j = BayesNode(jrv, cpt=[0.90, 0.05], [a])
+    bn = BayesNet(e,b,a,j,m)
+    bn.query_raw(rv=[b], given=[j, m]) #probability of a burglary given both john and mary call
+    bn.Pr('B | j, m')
 
