@@ -1,5 +1,6 @@
 from itertools import product, combinations
 from math import log
+import copy
 
 DEBUG = False
 
@@ -89,7 +90,8 @@ class BayesNode(object):
         return sign_value(self.cpt[key], self.sign)
 
     def neg(self):
-        return self.set_sign(not(self.sign))
+        new = copy.deepcopy(self)
+        return new.set_sign(not(new.sign))
 
     def pr(self, rvs=(), given=(), full_dist={}):
         """
@@ -118,7 +120,7 @@ class BayesNode(object):
         # all possible characters to combine
         possibilities = flatten([[hv, hv.neg()] for hv in hidden_variables])
         # all combinations of those characters
-        combos = make_combinations(possibilities, len(hidden_variables)/2 -1, splitchar='!')
+        combos = make_combinations(possibilities, len(hidden_variables), splitchar='!')
         # those combos consed into a new list
         final_combos = [combo + set_difference for combo in combos]
         print("""
@@ -159,7 +161,7 @@ class BayesNode(object):
         """
         """
         if self in rvs:
-            this_node = filter(lambda n: n == self, rvs)[0]
+            this_node = filter(lambda n: n == self or n.neg() == self, rvs)[0]
         else:
             print(self)
             print('rvs: %s' % rvs)
@@ -249,7 +251,7 @@ class BayesNode(object):
 
 def unique(splitchar="!"):
     def result(tup):
-        return len(set(map(lambda x: x.split(splitchar)[-1], tup))) == len(map(lambda x: x.split(splitchar)[-1], tup))
+        return len(set(map(lambda x: x.name.split(splitchar)[-1], tup))) == len(map(lambda x: x.name.split(splitchar)[-1], tup))
     return result
 
 def flatten(l):
