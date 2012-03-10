@@ -117,7 +117,14 @@ def node_pr(node, given_key=(), is_pos=True):
 def parse_sep(sepstr, sepchar=SEPCHAR):
     return list(filter(bool, [x.strip() for x in sepstr.split(sepchar)]))
 
-def parse_query(st, pipechar=PIPCHAR, sepchar=SEPCHAR):
+def negate(rvs, negchar=NEGCHAR):
+    """
+    ('a', '!b', 'c') -> ('!a', 'b', '!c')
+    ['a'] -> ['!a']
+    """
+    return list(map(lambda x: x.split(negchar)[-1] if negchar in x else '!%s' % x, rvs))
+
+def parse_query(st, pipechar=PIPCHAR, sepchar=SEPCHAR, do_negate=False):
     """
     query_str -> rvs, given
     """
@@ -125,9 +132,11 @@ def parse_query(st, pipechar=PIPCHAR, sepchar=SEPCHAR):
         dirty_rvs, dirty_given = st.split(pipechar)
         given = parse_sep(dirty_given)
     else:
-        dirty_rvs = query.split(sepchar)
-        given = ()
+        dirty_rvs = st
+        given = []
     rvs = parse_sep(dirty_rvs)
+    if do_negate:
+        rvs = negate(rvs)
     return rvs, given
 
 def choose_key(query_list):
@@ -180,19 +189,49 @@ def is_positive(node, query, negchar=NEGCHAR):
         return negchar not in f[0]
     return False
 
-def combinate(given):
+def unique(tup, negchar=NEGCHAR):
+    return len(set(map(lambda x: x.split(negchar)[-1], tup))) == len(list(map(lambda x: x.split(negchar)[-1], tup)))
+
+def remove_alike(abbr_list, negchar=NEGCHAR):
+    return list(filter(unique, abbr_list))
+
+def combinate(ndlist):
     """
     takes a list of thingies and returns all possible permutations (with !) of
     those variables
     """
-    return itertools.combinations(([node_abbr_not(node) for node in given] + list(given)), len(given) - 1)
+    return remove_alike(itertools.combinations(([node_abbr_not(node) for node in ndlist] + list(ndlist)), len(ndlist)))
+
+def remove_neg(n, negchar=NEGCHAR):
+    if negchar in n:
+        return n.split(negchar)[-1]
+    else:
+        return n
+
+def hidden_vars(bnet, rv, given):
+    """
+    (bnet, rv, given) -> hidden_vars
+    """
+    return key_set(bnet) - set(map(remove_neg, rv + given))
+
+def alpha(a, b):
+    return 1 / (a + b)
+
+def normalize(a, b):
+    """
+    pr(A), pr(B) -> a*pr(A)
+    """
+    return alpha(a, b) * a
 
 def generate_queries(bnet, parsed_query):
     """
     bnet, query -> [query]
+
+    # debugging lol
     """
-    rv, given = rv_given_query
-    return [tuple(key_set(bnet) - set(given) + set(comb)) for comb in combinate(given)]
+    rv, given = parsed_query
+    combos = combinate(hidden_vars(bnet, rv, given))
+    return [set(x).union(rv).union(given) for x in combos]
 
 def calc_pr(bnet, query):
     """
@@ -203,7 +242,8 @@ def calc_pr(bnet, query):
                     for node in bnet_nodes(bnet)])
 
 def pr(bnet, query_string):
-    return sum([calc_pr(bnet, query) for query in generate_queries(bnet, parse_query(query_string))])
+    return normalize(sum([calc_pr(bnet, query) for query in generate_queries(bnet, parse_query(query_string))]),
+                     sum([calc_pr(bnet, query) for query in generate_queries(bnet, parse_query(query_string, do_negate=True))]))
         
 
 #
@@ -212,7 +252,7 @@ def pr(bnet, query_string):
 
 def make_eq_model():
     """
-    generates the basic earthquake model
+    generates the basic burglary & earthquake model from AIMA
     """
     ecpt = { (): 0.002 }
     bcpt = { (): 0.001 }
@@ -230,6 +270,33 @@ def make_eq_model():
     m = node('Mary',       'm', mcpt, parents=[a])
     j = node('John',       'j', jcpt, parents=[a])
     bn = bnet(e,b,a,m,j)
+    return bn
+
+def make_writer_model():
+    """
+    resume
+    writing sample
+
+        R       W
+         \     /
+          \   /
+            A <- accepted
+            |
+            J <- accept job
+    """
+    rcpt = { (): 0.25 }
+    wcpt = { (): 0.3 }
+    acpt = { ('r', 'w'): 0.95,
+             ('r', '!w'): 0.8,
+             ('!r', 'w'): 0.25,
+             ('!r', '!w'): 0.03 }
+    jcpt = { ('a',): 0.4,
+             ('!a',): 0 }
+    r = node('GoodResume', 'r', rcpt, parents=[])
+    w = node('GoodWritingSample', 'w', wcpt, parents=[])
+    a = node('Accepted', 'a', acpt, parents=[r,w])
+    j = node('TakesJob', 'j', jcpt, parents=[a])
+    bn = bnet(r,w,a,j)
     return bn
 
 def run():
