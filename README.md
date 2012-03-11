@@ -1,6 +1,6 @@
-% Bayes Threat - Bayesian Networks, code tutorial
-% Stephen A. Balaban
-% 2012-03-10
+# Bayes Threat - Bayesian Networks, code tutorial
+Stephen A. Balaban
+2012-03-10
 
 The purpose of this code tutorial is to act as a playground for me to learn
 more about Bayesian networks as well as a roadmap for others who are interested
@@ -11,11 +11,11 @@ Intelligence: A Modern Approach</a>. The book is a wealth of knowledge
 regarding Artificial Intelligence, I recommend it as part of anyone's <a
 href="/ppl" alt="Personal Professional Library">PPL</a>.
 
-# What is a Bayesian Network
+## What is a Bayesian Network
 
 Simply a bayesian network is a directed acyclic 
 
-# The Structure
+## The Structure
 
 <code>bn.py</code> contains two main sets of functions, node-level functions and
 bayesnet-level functions
@@ -29,7 +29,7 @@ In my model, a *node* is a 4-tuple:
 A *bnet* is a list of nodes in the network. Let's construct the model from
 AIMA:
 
-<code>
+<pre>
 Example BN with CPTs:
                  +-------+                      +-------+
     ( Burglary ) | P(B)  |      ( Earthquake )  | P(E)  |
@@ -54,4 +54,4 @@ Example BN with CPTs:
     +---+------+               +---+------+
     | 0 | 0.05 |               | 1 | 0.01 |
     +---+------+               +---+------+
-</code>
+</pre>
