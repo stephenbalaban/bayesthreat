@@ -2,14 +2,15 @@ import functools
 import itertools
 from math import log
 
+it = itertools
+ft = functools
+
 DEBUG = False
 NEGCHAR = '!'
 SEPCHAR = ','
 PIPCHAR = '|'
 
 """
-AGDA - 
-
 Example BN with CPTs:
                  +-------+                      +-------+
     ( Burglary ) | P(B)  |      ( Earthquake )  | P(E)  |
@@ -64,7 +65,22 @@ identity = lambda x: x
 pr_not = lambda pr: 1 - pr
 
 def flatten(l):
+    """
+    Takes a nested list of lists (two deep) and flattens it into a single list:
+    [[1,2],[3,4],[5,6]] -> [1,2,3,4,5,6]
+    """
     return [item for sublist in l for item in sublist]
+
+##
+# Data Structure:
+#
+#   Node
+#       A node is a 4-tuple [name, cpt, abbr, parents]
+#   Bayesnet
+#       A Bayesnet is a dict of nodes keyed by their abbreviation
+#           'a': node_a
+#           'b': node_b
+##
 
 #
 # Node functions
@@ -72,14 +88,22 @@ def flatten(l):
 
 def node(name, abbr, cpt, parents=[]):
     """
-    Node is a tuple:
-        name, abbreviation, constraint_pr_table, parents_list
+    A node is a 4-tuple:
+        name, constraint_pr_table, abbreviation, parents_list
+    e.g.
+        >>> bn.node('Female', 'f', { (): 0.5}, []) 
+        ['Female', {(): 0.5}, 'f', []]
     """
     return [name, cpt, abbr, parents]
 
 def node_abbr_not(abbr, negchar=NEGCHAR):
-    """ nodename -> !nodename
-        !nodename -> nodename
+    """ 
+    Returns the opposite abbr of a given node
+    e.g.
+        >>> node_abbr_not('nodename')
+        '!nodename'
+        >>> node_abbr_not('!nodename')
+        'nodename'
     """
     if negchar in abbr:
         return abbr.split(negchar)[0]
@@ -106,27 +130,40 @@ def keys(node):
 
 def node_pr(node, given_key=(), is_pos=True):
     """ 
-    (node, given_list) -> float
+    (node, given_list, is_positive) -> float
     """
     wrapper = identity if is_pos else pr_not
     if given_key not in cpt(node):
-        raise KeyError("Proper key for cpt(node) was not provided, got: %s" % str(given_key))
+        raise KeyError("Key for cpt(node) not provided, got: %s" % str(given_key))
     else:
         return wrapper(cpt(node)[given_key])
 
 def parse_sep(sepstr, sepchar=SEPCHAR):
+    """
+    >>> parse_sep('a,b,c')
+    ['a','b','c']
+    >>> parse_sep(',a,b,c') # no empty strings
+    ['a','b','c']
+    """
     return list(filter(bool, [x.strip() for x in sepstr.split(sepchar)]))
 
 def negate(rvs, negchar=NEGCHAR):
     """
-    ('a', '!b', 'c') -> ('!a', 'b', '!c')
-    ['a'] -> ['!a']
+    rv_list -> neg_rv_list
+
+    >>> negate(['a', '!b', 'c'])
+    ['!a', 'b', '!c']
+    >>> negate(['a'])
+    ['a']
     """
-    return list(map(lambda x: x.split(negchar)[-1] if negchar in x else '!%s' % x, rvs))
+    return list(map(lambda x: x.split(negchar)[-1] if negchar in x else 
+                                                        '!%s' % x, rvs))
 
 def parse_query(st, pipechar=PIPCHAR, sepchar=SEPCHAR, do_negate=False):
     """
     query_str -> rvs, given
+    >>> parse_query('b | m,j')
+    ('b', ('m','j')) 
     """
     if pipechar in st:
         dirty_rvs, dirty_given = st.split(pipechar)
@@ -190,19 +227,49 @@ def is_positive(node, query, negchar=NEGCHAR):
     return False
 
 def unique(tup, negchar=NEGCHAR):
-    return len(set(map(lambda x: x.split(negchar)[-1], tup))) == len(list(map(lambda x: x.split(negchar)[-1], tup)))
+    """
+    predicate for whether or not a tuple contains the same abbr
+
+    e.g.
+        >>> bn.unique(('a', '!a')) 
+        False
+        >>> bn.unique(('a', '!b'))
+        True
+    """
+    return len(set(map(lambda x: x.split(negchar)[-1], tup))) == \
+           len(list(map(lambda x: x.split(negchar)[-1], tup)))
 
 def remove_alike(abbr_list, negchar=NEGCHAR):
+    """
+    removes tuples like ('a', '!a'),
+                        ('c', '!a', '!c')
+    e.g.
+        >>> bn.remove_alike([('a', '!a'), ('b', 'c')]) 
+        [('b', 'c')]
+    """
     return list(filter(unique, abbr_list))
 
 def combinate(ndlist):
     """
     takes a list of thingies and returns all possible permutations (with !) of
     those variables
+
+    e.g.
+        >>> bn.combinate(['a', 'b'])
+        [('!a', '!b'), ('!a', 'b'), ('!b', 'a'), ('a', 'b')]
     """
-    return remove_alike(itertools.combinations(([node_abbr_not(node) for node in ndlist] + list(ndlist)), len(ndlist)))
+    return remove_alike(it.combinations(
+            ([node_abbr_not(node) for node in ndlist] + list(ndlist)),
+            len(ndlist)))
 
 def remove_neg(n, negchar=NEGCHAR):
+    """
+    rv_abbr -> positive_rv_abbr
+        >>> bn.remove_neg('!a')
+        'a'
+        >>> bn.remove_neg('a')
+        'a'
+    """
     if negchar in n:
         return n.split(negchar)[-1]
     else:
@@ -215,11 +282,22 @@ def hidden_vars(bnet, rv, given):
     return key_set(bnet) - set(map(remove_neg, rv + given))
 
 def alpha(a, b):
+    """
+    alpha is a normalization constant
+    """
     return 1 / (a + b)
 
 def normalize(a, b):
     """
-    pr(A), pr(B) -> a*pr(A)
+    pr(A), pr(B) -> alpha(a,b)*pr(A)
+
+    e.g.
+        >>> a = 0.03
+        >>> b = 0.0004
+        >>> a_norm = bn.normalize(a, b)
+        >>> b_norm = bn.normalize(b, a)
+        >>> print(a_norm, b_norm) 
+        0.9868421052631577, 0.013157894736842105
     """
     return alpha(a, b) * a
 
@@ -242,8 +320,10 @@ def calc_pr(bnet, query):
                     for node in bnet_nodes(bnet)])
 
 def pr(bnet, query_string):
-    return normalize(sum([calc_pr(bnet, query) for query in generate_queries(bnet, parse_query(query_string))]),
-                     sum([calc_pr(bnet, query) for query in generate_queries(bnet, parse_query(query_string, do_negate=True))]))
+    return normalize(sum([calc_pr(bnet, query) for query in
+                          generate_queries(bnet, parse_query(query_string))]),
+                     sum([calc_pr(bnet, query) for query in 
+                          generate_queries(bnet, parse_query(query_string, do_negate=True))]))
         
 
 #
@@ -252,7 +332,8 @@ def pr(bnet, query_string):
 
 def make_eq_model():
     """
-    generates the basic burglary & earthquake model from AIMA
+    Generates the basic burglary & earthquake model from 
+    Artificial Intelligence: A Modern Approach
     """
     ecpt = { (): 0.002 }
     bcpt = { (): 0.001 }
@@ -274,10 +355,9 @@ def make_eq_model():
 
 def make_writer_model():
     """
-    resume
-    writing sample
-
-        R       W
+    resume    writing sample
+    |               |
+    +-> R       W <-+
          \     /
           \   /
             A <- accepted
