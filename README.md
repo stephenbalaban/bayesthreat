@@ -29,7 +29,7 @@ In my model, a *node* is a 4-tuple:
 A *bnet* is a list of nodes in the network. Let's construct the model from
 AIMA:
 
-<pre>
+<code>
 Example BN with CPTs:
                  +-------+                      +-------+
     ( Burglary ) | P(B)  |      ( Earthquake )  | P(E)  |
@@ -38,7 +38,7 @@ Example BN with CPTs:
           \      +-------+      /               +-------+
            \                   /
             \                 /                 +-----+-------+ 
-             \-> ( Alarm ) <-/                  | B E | P(A)  |
+             \-- ( Alarm ) --/                  | B E | P(A)  |
                                                 +-----+-------+
                  /      \                       | 1 1 | 0.95  |
                 /        \                      +-----+-------+
@@ -54,4 +54,4 @@ Example BN with CPTs:
     +---+------+               +---+------+
     | 0 | 0.05 |               | 1 | 0.01 |
     +---+------+               +---+------+
-</pre>
+</code>
